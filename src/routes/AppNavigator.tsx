@@ -87,7 +87,7 @@ export default function AppNavigator() {
           options={{ headerShown: false }}
         />
 
-        {/* --- AS ROTAS QUE FALTAVAM --- */}
+        
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}

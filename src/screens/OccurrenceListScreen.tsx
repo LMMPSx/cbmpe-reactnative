@@ -112,7 +112,7 @@ export default function OccurrenceListScreen({ navigation }: any) {
               </Text>
             </View>
             <View style={[styles.priorityCard, { backgroundColor: "#87CEEB" }]}>
-              <Text style={[styles.priorityNumber, { color: "#000" }]}>3</Text>
+              <Text style={[styles.priorityNumber, { color: "#000" }]}>1</Text>
               <Text style={[styles.priorityLabel, { color: "#000" }]}>
                 Baixa
               </Text>
