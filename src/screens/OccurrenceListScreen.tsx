@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,30 +8,36 @@ import {
   StatusBar,
   ScrollView,
   TextInput,
+  Alert,
 } from "react-native";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import CustomHeader from "../components/CustomHeader";
 import CustomFooter from "../components/CustomFooter";
 
 export default function OccurrenceListScreen({ navigation }: any) {
-  const [activeModal, setActiveModal] = useState<"filter" | "search" | null>(
-    null
-  );
+  const [activeModal, setActiveModal] = useState<"filter" | "search" | null>(null);
   const [searchText, setSearchText] = useState("");
+  
+  // --- ESTADO DOS FILTROS ---
+  const [filters, setFilters] = useState({
+    priority: null as string | null,
+    period: null as string | null,
+    type: "Incêndio",
+    region: "Olinda",
+    status: "Em aberto",
+  });
 
   // --- DADOS COMPLETOS MOCKADOS ---
-  const occurrences = [
+  const allOccurrences = [
     {
       id: "1",
       type: "Incêndio",
       protocolo: "2025-00145",
-      date: "30/08/2025 - 12:50",
+      date: "30/06/2025 - 12:50",
       region: "Olinda",
       status: "Em aberto",
       priority: "high",
-      description:
-        "Incêndio de médio porte em vegetação próxima à rodovia PE-15. Risco de fumaça na pista.",
-      // AGORA USAMOS RESPONSAVEL
+      description: "Incêndio de médio porte em vegetação próxima à rodovia PE-15. Risco de fumaça na pista.",
       responsavel: "Sgt. Peixoto (Viatura ABT-12)",
       lat: -7.9964,
       lng: -34.8419,
@@ -40,12 +46,11 @@ export default function OccurrenceListScreen({ navigation }: any) {
       id: "2",
       type: "Resgate de animal",
       protocolo: "2025-00146",
-      date: "30/08/2025 - 13:00",
+      date: "30/06/2025 - 13:00",
       region: "Olinda",
       status: "Em aberto",
       priority: "medium",
-      description:
-        "Gato preso em topo de árvore de 10 metros. Solicitante informou que o animal está lá há 2 dias.",
+      description: "Gato preso em topo de árvore de 10 metros. Solicitante informou que o animal está lá há 2 dias.",
       responsavel: "Sub. Ten. Oliveira (Viatura ABS-05)",
       lat: -8.0153,
       lng: -34.8507,
@@ -54,7 +59,7 @@ export default function OccurrenceListScreen({ navigation }: any) {
       id: "3",
       type: "Treinamento",
       protocolo: "2025-00147",
-      date: "30/08/2025 - 15:00",
+      date: "30/06/2025 - 15:00",
       region: "Olinda",
       status: "Em aberto",
       priority: "low",
@@ -65,21 +70,185 @@ export default function OccurrenceListScreen({ navigation }: any) {
     },
   ];
 
+  // --- ESTATÍSTICAS DE PRIORIDADE ---
+  const priorityStats = {
+    high: allOccurrences.filter(o => o.priority === "high").length,
+    medium: allOccurrences.filter(o => o.priority === "medium").length,
+    low: allOccurrences.filter(o => o.priority === "low").length,
+  };
+
+  // --- FUNÇÃO DE FILTRAGEM ---
+  const [filteredOccurrences, setFilteredOccurrences] = useState(allOccurrences);
+
+  const applyFilters = () => {
+    let result = [...allOccurrences];
+    
+    // Filtro por texto de pesquisa
+    if (searchText.trim() !== "") {
+      const searchLower = searchText.toLowerCase();
+      result = result.filter(item => 
+        item.type.toLowerCase().includes(searchLower) ||
+        item.protocolo.toLowerCase().includes(searchLower) ||
+        item.description.toLowerCase().includes(searchLower) ||
+        item.region.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    // Aplicar filtros selecionados
+    if (filters.type && filters.type !== "Todos") {
+      result = result.filter(item => item.type === filters.type);
+    }
+    
+    if (filters.region && filters.region !== "Todas") {
+      result = result.filter(item => item.region === filters.region);
+    }
+    
+    if (filters.status && filters.status !== "Todos") {
+      result = result.filter(item => item.status === filters.status);
+    }
+    
+    if (filters.priority) {
+      result = result.filter(item => item.priority === filters.priority);
+    }
+    
+    setFilteredOccurrences(result);
+  };
+
+  // --- INICIALIZAÇÃO DOS FILTROS ---
+  useEffect(() => {
+    applyFilters();
+  }, [filters, searchText]);
+
+  // --- FUNÇÕES PARA FILTROS ---
+  const handleFilterSelect = (filterType: string, value: string | null) => {
+    setFilters(prev => ({
+      ...prev,
+      [filterType]: value
+    }));
+  };
+
+  // Função específica para prioridade com seleção
+  const handlePriorityFilter = () => {
+    Alert.alert(
+      "Filtrar por Prioridade",
+      "Selecione a prioridade:",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Alta", 
+          onPress: () => handleFilterSelect("priority", "high"),
+          style: filters.priority === "high" ? "default" : "default"
+        },
+        { 
+          text: "Média", 
+          onPress: () => handleFilterSelect("priority", "medium") 
+        },
+        { 
+          text: "Baixa", 
+          onPress: () => handleFilterSelect("priority", "low") 
+        },
+        { 
+          text: "Limpar filtro", 
+          onPress: () => handleFilterSelect("priority", null),
+          style: "destructive"
+        }
+      ]
+    );
+  };
+
+  // Função para tipo
+  const handleTypeFilter = () => {
+    const types = Array.from(new Set(allOccurrences.map(o => o.type)));
+    Alert.alert(
+      "Filtrar por Tipo",
+      "Selecione o tipo:",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Todos", 
+          onPress: () => handleFilterSelect("type", "Todos") 
+        },
+        ...types.map(type => ({
+          text: type,
+          onPress: () => handleFilterSelect("type", type)
+        }))
+      ]
+    );
+  };
+
+  // Função para região
+  const handleRegionFilter = () => {
+    const regions = Array.from(new Set(allOccurrences.map(o => o.region)));
+    Alert.alert(
+      "Filtrar por Região",
+      "Selecione a região:",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Todas", 
+          onPress: () => handleFilterSelect("region", "Todas") 
+        },
+        ...regions.map(region => ({
+          text: region,
+          onPress: () => handleFilterSelect("region", region)
+        }))
+      ]
+    );
+  };
+
+  // Função para status
+  const handleStatusFilter = () => {
+    const statuses = Array.from(new Set(allOccurrences.map(o => o.status)));
+    Alert.alert(
+      "Filtrar por Status",
+      "Selecione o status:",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Todos", 
+          onPress: () => handleFilterSelect("status", "Todos") 
+        },
+        ...statuses.map(status => ({
+          text: status,
+          onPress: () => handleFilterSelect("status", status)
+        }))
+      ]
+    );
+  };
+
+  const getPriorityLabel = (priority: string | null) => {
+    if (!priority) return "Todas";
+    switch (priority) {
+      case "high": return "Alta";
+      case "medium": return "Média";
+      case "low": return "Baixa";
+      default: return priority;
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case "high":
-        return "#C8102E";
-      case "medium":
-        return "#FFCC00";
-      case "low":
-        return "#87CEEB";
-      default:
-        return "#999";
+      case "high": return "#C8102E";
+      case "medium": return "#FFCC00";
+      case "low": return "#87CEEB";
+      default: return "#999";
     }
   };
 
   const toggleModal = (modalName: "filter" | "search") => {
     setActiveModal(activeModal === modalName ? null : modalName);
+  };
+
+  const clearAllFilters = () => {
+    setFilters({
+      priority: null,
+      period: null,
+      type: "Incêndio",
+      region: "Olinda",
+      status: "Em aberto",
+    });
+    setSearchText("");
+    setActiveModal(null);
   };
 
   return (
@@ -96,26 +265,22 @@ export default function OccurrenceListScreen({ navigation }: any) {
           {/* Prioridades */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Prioridade</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={clearAllFilters}>
               <Ionicons name="refresh" size={22} color="#666" />
             </TouchableOpacity>
           </View>
           <View style={styles.priorityRow}>
             <View style={[styles.priorityCard, { backgroundColor: "#C8102E" }]}>
-              <Text style={styles.priorityNumber}>3</Text>
+              <Text style={styles.priorityNumber}>{priorityStats.high}</Text>
               <Text style={styles.priorityLabel}>Alta</Text>
             </View>
             <View style={[styles.priorityCard, { backgroundColor: "#FFCC00" }]}>
-              <Text style={[styles.priorityNumber, { color: "#000" }]}>2</Text>
-              <Text style={[styles.priorityLabel, { color: "#000" }]}>
-                Média
-              </Text>
+              <Text style={[styles.priorityNumber, { color: "#000" }]}>{priorityStats.medium}</Text>
+              <Text style={[styles.priorityLabel, { color: "#000" }]}>Média</Text>
             </View>
             <View style={[styles.priorityCard, { backgroundColor: "#87CEEB" }]}>
-              <Text style={[styles.priorityNumber, { color: "#000" }]}>1</Text>
-              <Text style={[styles.priorityLabel, { color: "#000" }]}>
-                Baixa
-              </Text>
+              <Text style={[styles.priorityNumber, { color: "#000" }]}>{priorityStats.low}</Text>
+              <Text style={[styles.priorityLabel, { color: "#000" }]}>Baixa</Text>
             </View>
           </View>
 
@@ -145,7 +310,7 @@ export default function OccurrenceListScreen({ navigation }: any) {
 
           {/* Lista */}
           <View style={styles.listContainer}>
-            {occurrences.map((item) => (
+            {filteredOccurrences.map((item) => (
               <TouchableOpacity
                 key={item.id}
                 style={styles.cardItem}
@@ -155,15 +320,9 @@ export default function OccurrenceListScreen({ navigation }: any) {
               >
                 <View style={styles.cardContentLeft}>
                   <Text style={styles.cardTypeText}>Tipo: {item.type}</Text>
-                  <Text style={styles.cardDetailText}>
-                    Data/Hora: {item.date}
-                  </Text>
-                  <Text style={styles.cardDetailText}>
-                    Região: {item.region}
-                  </Text>
-                  <Text style={styles.cardStatusText}>
-                    Status: {item.status}
-                  </Text>
+                  <Text style={styles.cardDetailText}>Data/Hora: {item.date}</Text>
+                  <Text style={styles.cardDetailText}>Região: {item.region}</Text>
+                  <Text style={styles.cardStatusText}>Status: {item.status}</Text>
                 </View>
                 <View
                   style={[
@@ -185,31 +344,105 @@ export default function OccurrenceListScreen({ navigation }: any) {
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Overlays */}
+        {/* Overlay de Filtros - Design Original */}
         {activeModal === "filter" && (
           <View style={styles.overlayPanel}>
             <View style={styles.overlayHeader}>
               <Ionicons name="filter" size={24} color="#FFF" />
-              <Text style={styles.overlayTitle}>Filtrar por:</Text>
+              <Text style={styles.overlayTitle}>Filtros aplicados:</Text>
             </View>
             <View style={styles.overlayBody}>
-              {["Prioridade", "Periodo", "Tipo", "Região", "Status"].map(
-                (f) => (
-                  <TouchableOpacity key={f} style={styles.filterInput}>
-                    <View style={styles.circleIcon}>
-                      <Ionicons name="chevron-down" size={16} color="#999" />
-                    </View>
-                    <Text style={styles.filterInputText}>{f}</Text>
-                  </TouchableOpacity>
-                )
-              )}
+              {/* Filtros que já estão aplicados */}
+              <TouchableOpacity 
+                style={styles.filterInput}
+                onPress={handleTypeFilter}
+              >
+                <View style={styles.circleIcon}>
+                  <Ionicons name="chevron-down" size={16} color="#999" />
+                </View>
+                <Text style={styles.filterInputText}>Tipo: {filters.type}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.filterInput}
+                onPress={handleRegionFilter}
+              >
+                <View style={styles.circleIcon}>
+                  <Ionicons name="chevron-down" size={16} color="#999" />
+                </View>
+                <Text style={styles.filterInputText}>Região: {filters.region}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.filterInput}
+                onPress={handleStatusFilter}
+              >
+                <View style={styles.circleIcon}>
+                  <Ionicons name="chevron-down" size={16} color="#999" />
+                </View>
+                <Text style={styles.filterInputText}>Status: {filters.status}</Text>
+              </TouchableOpacity>
+
+              {/* Opções adicionais para filtrar */}
+              <Text style={styles.overlaySubtitle}>Mais opções:</Text>
+              
+              <View style={styles.moreOptionsRow}>
+                <TouchableOpacity 
+                  style={styles.moreOptionButton}
+                  onPress={handlePriorityFilter}
+                >
+                  <Text style={styles.moreOptionText}>
+                    Prioridade: {getPriorityLabel(filters.priority)}
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.moreOptionButton}
+                  onPress={() => {
+                    Alert.alert("Período", "Funcionalidade em desenvolvimento");
+                  }}
+                >
+                  <Text style={styles.moreOptionText}>Período</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.moreOptionsRow}>
+                <TouchableOpacity 
+                  style={styles.moreOptionButton}
+                  onPress={handleTypeFilter}
+                >
+                  <Text style={styles.moreOptionText}>Tipo</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.moreOptionButton}
+                  onPress={handleRegionFilter}
+                >
+                  <Text style={styles.moreOptionText}>Região</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.moreOptionButton}
+                  onPress={handleStatusFilter}
+                >
+                  <Text style={styles.moreOptionText}>Status</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Botão para limpar todos os filtros */}
+              <TouchableOpacity 
+                style={styles.clearAllButton}
+                onPress={clearAllFilters}
+              >
+                <Text style={styles.clearAllText}>Limpar todos os filtros</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
+
+        {/* Overlay de Pesquisa - Design Original */}
         {activeModal === "search" && (
-          <View
-            style={[styles.overlayPanel, { height: "auto", paddingBottom: 30 }]}
-          >
+          <View style={[styles.overlayPanel, { height: "auto", paddingBottom: 30 }]}>
             <View style={styles.overlayHeader}>
               <Text style={styles.overlayTitle}>Pesquisar:</Text>
             </View>
@@ -217,8 +450,18 @@ export default function OccurrenceListScreen({ navigation }: any) {
               style={styles.searchInputWhite}
               value={searchText}
               onChangeText={setSearchText}
+              placeholder="Digite para pesquisar..."
+              placeholderTextColor="#999"
               autoFocus
             />
+            {searchText.length > 0 && (
+              <TouchableOpacity 
+                style={styles.clearSearchButton}
+                onPress={() => setSearchText("")}
+              >
+                <Text style={styles.clearSearchText}>Limpar pesquisa</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -349,6 +592,13 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontWeight: "500",
   },
+  overlaySubtitle: {
+    color: "#FFF",
+    fontSize: 16,
+    marginTop: 20,
+    marginBottom: 10,
+    fontWeight: "500",
+  },
   overlayBody: { gap: 10 },
   filterInput: {
     backgroundColor: "#FFF",
@@ -375,5 +625,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     fontSize: 16,
     color: "#000",
+  },
+  clearSearchButton: {
+    alignSelf: "center",
+    marginTop: 15,
+    padding: 10,
+  },
+  clearSearchText: {
+    color: "#FFF",
+    fontSize: 14,
+    textDecorationLine: "underline",
+  },
+  moreOptionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 10,
+  },
+  moreOptionButton: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  moreOptionText: {
+    color: "#FFF",
+    fontSize: 14,
+  },
+  clearAllButton: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 10,
+    padding: 15,
+    alignItems: "center",
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  clearAllText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });

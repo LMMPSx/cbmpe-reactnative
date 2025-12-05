@@ -9,8 +9,13 @@ import {
   StatusBar,
   Alert,
   Modal,
+  Linking,
+  Platform,
 } from "react-native";
 import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import CustomHeader from "../components/CustomHeader";
 import CustomFooter from "../components/CustomFooter";
 
@@ -19,6 +24,8 @@ export default function OccurrenceDetailScreen({ navigation, route }: any) {
 
   const [showTimelineModal, setShowTimelineModal] = useState(false);
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [signature, setSignature] = useState<string | null>(null);
 
   // Fallback de dados para evitar erros se vier vazio
   const data = occurrence || {
@@ -40,12 +47,30 @@ export default function OccurrenceDetailScreen({ navigation, route }: any) {
     return p;
   };
 
-  // Funções de Ação
+
+
   const handleOpenMap = () => {
     if (data.lat && data.lng) {
-      navigation.navigate("MapScreen", {
-        initialCoords: { lat: data.lat, lng: data.lng },
+      const scheme = Platform.select({
+        ios: "maps:0,0?q=",
+        android: "geo:0,0?q=",
       });
+      const latLng = `${data.lat},${data.lng}`;
+      const label = `Ocorrência ${data.protocolo}`;
+      const url = Platform.select({
+        ios: `${scheme}${label}@${latLng}`,
+        android: `${scheme}${latLng}(${label})`,
+      });
+
+      if (url) {
+        Linking.openURL(url).catch((err) => {
+          console.error("Erro ao abrir mapa:", err);
+          Alert.alert(
+            "Erro",
+            "Não foi possível abrir o aplicativo de mapas"
+          );
+        });
+      }
     } else {
       Alert.alert(
         "Atenção",
@@ -53,9 +78,149 @@ export default function OccurrenceDetailScreen({ navigation, route }: any) {
       );
     }
   };
-  const handleDownload = () => {
-    Alert.alert("Download", `Gerando PDF do protocolo ${data.protocolo}...`);
+
+  const handleAddImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert("Permissão necessária", "Precisamos de acesso à galeria para adicionar imagens.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        const newAttachment = {
+          id: Date.now().toString(),
+          type: 'image',
+          uri: result.assets[0].uri,
+          name: `imagem_${Date.now()}.jpg`,
+          date: new Date().toLocaleString(),
+        };
+
+        setAttachments([...attachments, newAttachment]);
+        Alert.alert("Sucesso", "Imagem adicionada aos anexos!");
+      }
+    } catch (error) {
+      console.error("Erro ao adicionar imagem:", error);
+      Alert.alert("Erro", "Não foi possível adicionar a imagem");
+    }
   };
+
+  const handleAddDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+
+      if (result.assets && result.assets.length > 0) {
+        const doc = result.assets[0];
+        const newAttachment = {
+          id: Date.now().toString(),
+          type: 'document',
+          uri: doc.uri,
+          name: doc.name || `documento_${Date.now()}`,
+          size: doc.size,
+          date: new Date().toLocaleString(),
+        };
+
+        setAttachments([...attachments, newAttachment]);
+        Alert.alert("Sucesso", "Documento adicionado aos anexos!");
+      }
+    } catch (error) {
+      console.error("Erro ao adicionar documento:", error);
+      Alert.alert("Erro", "Não foi possível adicionar o documento");
+    }
+  };
+
+  const handleAddSignature = () => {
+    Alert.alert(
+      "Assinatura Digital",
+      "Você será redirecionado para a tela de assinatura digital.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Continuar", 
+          onPress: () => {
+            navigation.navigate("SignatureScreen", {
+              occurrenceId: data.protocolo,
+              onSaveSignature: (signatureUri: string) => {
+                setSignature(signatureUri);
+                Alert.alert("Sucesso", "Assinatura digital salva!");
+              }
+            });
+          }
+        }
+      ]
+    );
+  };
+
+  const handleViewAttachment = (attachment: any) => {
+    Alert.alert(
+      `Anexo: ${attachment.name}`,
+      `Tipo: ${attachment.type}\nData: ${attachment.date}\nTamanho: ${attachment.size ? `${(attachment.size / 1024).toFixed(2)} KB` : 'N/A'}`,
+      [
+        { text: "Fechar", style: "cancel" },
+        { 
+          text: "Abrir", 
+          onPress: () => {
+            console.log("Abrir anexo:", attachment.uri);
+          }
+        },
+        {
+          text: "Remover",
+          style: "destructive",
+          onPress: () => {
+            setAttachments(attachments.filter(a => a.id !== attachment.id));
+          }
+        }
+      ]
+    );
+  };
+
+  const handleOpenTimeline = () => {
+    setShowTimelineModal(true);
+  };
+
+  const handleDownload = async () => {
+    try {
+      Alert.alert(
+        "Download",
+        "Selecione o formato para download:",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { 
+            text: "PDF", 
+            onPress: async () => {
+              Alert.alert("Download PDF", `Gerando PDF do protocolo ${data.protocolo}...`);
+             
+            }
+          },
+          { 
+            text: "ZIP (com anexos)", 
+            onPress: async () => {
+              if (attachments.length === 0) {
+                Alert.alert("Aviso", "Não há anexos para incluir no download.");
+                return;
+              }
+              
+              Alert.alert("Download ZIP", "Preparando pacote com anexos...");
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error("Erro no download:", error);
+      Alert.alert("Erro", "Não foi possível realizar o download");
+    }
+  };
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -120,15 +285,22 @@ export default function OccurrenceDetailScreen({ navigation, route }: any) {
 
           <Text style={styles.attachmentsLabel}>Anexos</Text>
           <View style={styles.attachmentsRow}>
-            <View style={styles.attachmentThumb}>
-              <Ionicons name="image" size={30} color="#FFF" />
-            </View>
-            <View style={styles.attachmentThumb}>
-              <Ionicons name="image" size={30} color="#FFF" />
-            </View>
-            <View style={styles.attachmentThumb}>
-              <Ionicons name="image" size={30} color="#FFF" />
-            </View>
+            {/* Thumbnails dos anexos existentes */}
+            {attachments.slice(0, 3).map((attachment, index) => (
+              <TouchableOpacity
+                key={attachment.id}
+                style={styles.attachmentThumb}
+                onPress={() => handleViewAttachment(attachment)}
+              >
+                <Ionicons 
+                  name={attachment.type === 'image' ? "image" : "document"} 
+                  size={30} 
+                  color="#FFF" 
+                />
+              </TouchableOpacity>
+            ))}
+            
+            {/* Botão para adicionar novos anexos */}
             <TouchableOpacity
               style={[styles.attachmentThumb, { backgroundColor: "#FFF" }]}
               onPress={() => setShowAttachmentsModal(true)}
@@ -136,13 +308,23 @@ export default function OccurrenceDetailScreen({ navigation, route }: any) {
               <Ionicons name="add" size={40} color="#000" />
             </TouchableOpacity>
           </View>
+          
+          {/* Contador de anexos */}
+          {attachments.length > 0 && (
+            <Text style={styles.attachmentCount}>
+              {attachments.length} anexo(s) adicionado(s)
+            </Text>
+          )}
         </View>
 
         <View style={styles.actionButtonsRow}>
+          {/* LOCALIZAÇÃO */}
           <TouchableOpacity style={styles.actionBtn} onPress={handleOpenMap}>
             <Ionicons name="map" size={32} color="#000" />
             <Text style={styles.actionBtnText}>Localização</Text>
           </TouchableOpacity>
+          
+          {/* ANEXOS */}
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => setShowAttachmentsModal(true)}
@@ -150,13 +332,17 @@ export default function OccurrenceDetailScreen({ navigation, route }: any) {
             <Feather name="paperclip" size={32} color="#000" />
             <Text style={styles.actionBtnText}>Anexos</Text>
           </TouchableOpacity>
+          
+          {/* TIMELINE */}
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => setShowTimelineModal(true)}
+            onPress={handleOpenTimeline}
           >
             <MaterialIcons name="timeline" size={32} color="#000" />
             <Text style={styles.actionBtnText}>Timeline</Text>
           </TouchableOpacity>
+          
+          {/* DOWNLOAD */}
           <TouchableOpacity style={styles.actionBtn} onPress={handleDownload}>
             <Feather name="download" size={32} color="#000" />
             <Text style={styles.actionBtnText}>Download</Text>
@@ -183,13 +369,33 @@ export default function OccurrenceDetailScreen({ navigation, route }: any) {
               <MaterialIcons name="timeline" size={28} color="#FFF" />
               <Text style={styles.modalTitle}>Timeline</Text>
             </View>
-            <View style={styles.timelineContent}>
-              <Text style={styles.timelineText}>
-                Adicionado por: {data.responsavel}
-              </Text>
-              <Text style={styles.timelineText}>Data/Hora: {data.date}</Text>
-              <Text style={styles.timelineText}>Editado por: -</Text>
-            </View>
+            <ScrollView style={styles.timelineScroll}>
+              <View style={styles.timelineItem}>
+                <View style={styles.timelineDot} />
+                <View style={styles.timelineContent}>
+                  <Text style={styles.timelineText}>
+                    <Text style={{ fontWeight: "bold" }}>Criação:</Text> {data.date}
+                  </Text>
+                  <Text style={styles.timelineSubtext}>
+                    Adicionado por: {data.responsavel}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.timelineItem}>
+                <View style={styles.timelineDot} />
+                <View style={styles.timelineContent}>
+                  <Text style={styles.timelineText}>
+                    <Text style={{ fontWeight: "bold" }}>Status Atual:</Text> {data.status}
+                  </Text>
+                  <Text style={styles.timelineSubtext}>
+                    Última atualização: {data.date}
+                  </Text>
+                </View>
+              </View>
+              
+              {/* Adicione mais eventos da timeline aqui */}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -209,24 +415,61 @@ export default function OccurrenceDetailScreen({ navigation, route }: any) {
           <View style={styles.modalPanel}>
             <View style={styles.modalHeaderRow}>
               <Feather name="paperclip" size={28} color="#FFF" />
-              <Text style={styles.modalTitle}>Anexos:</Text>
+              <Text style={styles.modalTitle}>Anexos</Text>
             </View>
-            <View style={styles.attachmentsList}>
-              <TouchableOpacity style={styles.attachmentListItem}>
-                <Text style={styles.attachmentListText}>Imagem</Text>
+            
+            <ScrollView style={styles.attachmentsList}>
+              {/* Lista de anexos existentes */}
+              {attachments.map((attachment) => (
+                <TouchableOpacity 
+                  key={attachment.id}
+                  style={styles.attachmentListItem}
+                  onPress={() => handleViewAttachment(attachment)}
+                >
+                  <View style={styles.attachmentListItemContent}>
+                    <Ionicons 
+                      name={attachment.type === 'image' ? "image-outline" : "document-outline"} 
+                      size={24} 
+                      color="#FFF" 
+                    />
+                    <View style={styles.attachmentInfo}>
+                      <Text style={styles.attachmentListText}>{attachment.name}</Text>
+                      <Text style={styles.attachmentListSubtext}>
+                        {attachment.date} • {attachment.type}
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#FFF" />
+                </TouchableOpacity>
+              ))}
+              
+              {/* Opções para adicionar novos anexos */}
+              <Text style={styles.addAttachmentTitle}>Adicionar Novo:</Text>
+              
+              <TouchableOpacity 
+                style={styles.addAttachmentButton}
+                onPress={handleAddImage}
+              >
+                <Ionicons name="image-outline" size={24} color="#FFF" />
+                <Text style={styles.addAttachmentText}>Imagem</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.attachmentListItem}>
-                <Text style={styles.attachmentListText}>Documento</Text>
+              
+              <TouchableOpacity 
+                style={styles.addAttachmentButton}
+                onPress={handleAddDocument}
+              >
+                <Ionicons name="document-outline" size={24} color="#FFF" />
+                <Text style={styles.addAttachmentText}>Documento</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.attachmentListItem}>
-                <Text style={styles.attachmentListText}>Vídeo</Text>
+              
+              <TouchableOpacity 
+                style={styles.addAttachmentButton}
+                onPress={handleAddSignature}
+              >
+                <Ionicons name="create-outline" size={24} color="#FFF" />
+                <Text style={styles.addAttachmentText}>Assinatura digital</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.attachmentListItem}>
-                <Text style={styles.attachmentListText}>
-                  Assinatura digital
-                </Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -289,6 +532,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontSize: 16,
   },
+  attachmentCount: {
+    color: "#FFF",
+    fontSize: 12,
+    marginTop: 5,
+    textAlign: "center",
+    opacity: 0.8,
+  },
   attachmentsRow: { flexDirection: "row", justifyContent: "space-between" },
   attachmentThumb: {
     width: 60,
@@ -331,6 +581,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 25,
     paddingBottom: 40,
+    maxHeight: "80%",
   },
   modalHeaderRow: {
     flexDirection: "row",
@@ -343,13 +594,81 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginLeft: 10,
   },
-  timelineContent: { gap: 10 },
-  timelineText: { color: "#FFF", fontSize: 18 },
-  attachmentsList: { gap: 15 },
+  timelineScroll: {
+    maxHeight: 300,
+  },
+  timelineItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 20,
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#FFF",
+    marginRight: 15,
+    marginTop: 5,
+  },
+  timelineContent: {
+    flex: 1,
+  },
+  timelineText: {
+    color: "#FFF",
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  timelineSubtext: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 14,
+  },
+  attachmentsList: {
+    maxHeight: 400,
+  },
   attachmentListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.3)",
-    paddingBottom: 10,
   },
-  attachmentListText: { color: "#FFF", fontSize: 18 },
+  attachmentListItemContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  attachmentInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  attachmentListText: {
+    color: "#FFF",
+    fontSize: 16,
+  },
+  attachmentListSubtext: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  addAttachmentTitle: {
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  addAttachmentButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  addAttachmentText: {
+    color: "#FFF",
+    fontSize: 16,
+    marginLeft: 12,
+  },
 });
